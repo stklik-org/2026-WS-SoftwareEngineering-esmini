@@ -2,13 +2,14 @@ name: build-image
 
 # Runs the test workflow, then builds the linux/amd64 image, smoke-tests it and publishes it to
 # ghcr.io/<owner>/esmini-rest (PLAN.md §7.3).
-#   manual run on main -> :main, :sha-<short sha>
+#   push to main      -> :main, :sha-<short sha>
 #   tag v1.2.3        -> :1.2.3, :1.2, :1, :latest, :esmini-<esmini version>, :sha-<short sha>
 #   tag v1.2.3-rc.1   -> :1.2.3-rc.1, :sha-<short sha>
 # Credentials: the workflow's GITHUB_TOKEN only.
 
 on:
   push:
+    branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
 

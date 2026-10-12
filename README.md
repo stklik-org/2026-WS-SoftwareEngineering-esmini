@@ -37,7 +37,7 @@ Then open the Swagger UI at <http://localhost:8080/docs> ("Try it out"). Ctrl+C 
 | `latest` | The newest release |
 | `0.1.0`, `0.1`, ... | A fixed release (from 1.0.0 on also the major version, `1`). Pin one so that your team keeps the same image throughout the course. |
 | `esmini-3.8.1` | The newest release built with this esmini version |
-| `main` | Pre-release builds for the instructors |
+| `main` | The latest commit on `main`, possibly unstable; for the instructors |
 
 `GET /v1/info` reports the version of the running image (`imageVersion`) and of esmini.
 
@@ -195,8 +195,9 @@ On macOS, `make` can fail with "You have not agreed to the Xcode license agreeme
 git tag v0.1.0 && git push origin v0.1.0   # -> :0.1.0, :0.1, :latest, :esmini-3.8.1, :sha-<commit>
 ```
 
-A tag such as `v0.2.0-rc.1` publishes only `:0.2.0-rc.1`. *Actions → build-image → Run workflow* on `main`
-publishes `:main` for a try-out before tagging. After the first push, set the package's visibility to *Public*
+A tag such as `v0.2.0-rc.1` publishes only `:0.2.0-rc.1`. Every push to `main` publishes `:main` (and
+`:sha-<commit>`) for a try-out before tagging; *Actions → build-image → Run workflow* does the same on demand.
+Pull requests run only the tests. After the first push, set the package's visibility to *Public*
 (organisation → *Packages* → `esmini-rest` → *Package settings*), otherwise students need a login to pull it. The
 image is a single-platform manifest without provenance attestation (`docs/spikes/03-ghcr-publishing.md`).
 

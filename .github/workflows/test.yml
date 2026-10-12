@@ -1,10 +1,9 @@
 name: test
 
+# Pushes to main and tags run these tests through build-image.yml (workflow_call), so that they run once.
 on:
-  push:
-    branches: [main]
   pull_request:
-  workflow_call:   # build-image.yml runs the tests before it publishes
+  workflow_call:
 
 permissions:
   contents: read
