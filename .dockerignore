@@ -1,0 +1,9 @@
+# Allow-list: the image needs only the service code and the dependency lock.
+*
+!app/
+!pyproject.toml
+!uv.lock
+!LICENSE
+!THIRD-PARTY-NOTICES.md
+**/__pycache__
+**/*.pyc

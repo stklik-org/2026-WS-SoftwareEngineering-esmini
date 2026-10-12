@@ -1,0 +1,51 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:   # build-image.yml runs the tests before it publishes
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.6"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest tests/unit tests/contract
+      - name: hadolint
+        run: docker run --rm -i -v "$PWD/.hadolint.yaml:/.config/hadolint.yaml" hadolint/hadolint:v2.12.0 < docker/Dockerfile
+
+  integration:
+    runs-on: ubuntu-24.04
+    needs: unit
+    env:
+      HOST_PORT: "18080"
+      MAX_CONCURRENT_JOBS: "2"
+      MAX_QUEUED_JOBS: "2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.6"
+      - run: uv sync --frozen
+      - name: Build image and start the service
+        run: docker compose -p esmini-rest-test up -d --build --wait
+      - name: Acceptance tests
+        run: |
+          ESMINI_URL=http://127.0.0.1:18080 \
+          ESMINI_CONTAINER=$(docker compose -p esmini-rest-test ps -q esmini) \
+          uv run pytest -m integration tests/integration
+      - name: Container log
+        if: always()
+        run: docker compose -p esmini-rest-test logs
+      - if: always()
+        run: docker compose -p esmini-rest-test down

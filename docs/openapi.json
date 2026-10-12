@@ -1,0 +1,1313 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "esmini REST service",
+    "description": "\nRuns [esmini](https://github.com/esmini/esmini) OpenSCENARIO simulations inside a local Docker container.\n\n**Typical use:** `POST /v1/simulations` with all `files` the scenario needs (the scenario `.xosc`, its road\n`.xodr`, catalogs, ...), the file name of the `scenario` among them, and a JSON `config`. The service answers `202`\nat once. Poll `GET /v1/jobs/{jobId}/status` until `state` is `finished`, then fetch the result from\n`GET /v1/jobs/{jobId}`. It lists artefacts (recording, CSV of entity states, log) that can be downloaded from\n`/v1/jobs/{jobId}/artifacts/{name}` until the job expires. Add `video` to `config.outputs` for an MP4 of the run\nin esmini's 3D viewer. The image contains no esmini sample scenarios, roads, catalogs or models: a run uses only\nthe uploaded files.\n\n`POST /v1/road-previews` draws an OpenDRIVE road network as a PNG top view.\n\nErrors are returned as `{\"code\": ..., \"message\": ..., \"details\": [...]}`. `GET /v1/info` reports the esmini\nversion, the features of this image and the server limits.\n\nesmini is licensed under the Mozilla Public License 2.0.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness probe",
+        "description": "Returns `{\"status\": \"ok\"}` as soon as the service accepts requests.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/info": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Versions, capabilities and limits",
+        "description": "Reports the esmini version inside the image, the features this image offers and the server limits.",
+        "operationId": "info_v1_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/simulations": {
+      "post": {
+        "tags": [
+          "simulations"
+        ],
+        "summary": "Submit a scenario run",
+        "description": "Checks the request, queues the run and answers at once with `202` and the job's URLs.\n\nAll files are stored flat in one directory, which is esmini's working directory, so a reference such as\n`../xodr/e6mini.xodr` resolves to the uploaded `e6mini.xodr` by file name. A file that is referred to but not\nuploaded makes the run fail.\n\nPoll `statusUrl` until `state` is `finished`, then fetch the result from `resultUrl`. It lists the artefacts\n(`sim.dat`, `sim.csv`, `log.txt`), which can be downloaded until the job expires. A scenario that fails or\ntimes out still finishes, with result `status` `failed` or `timed_out`; its `warnings` and `log.txt` explain\nwhy. Errors in the request itself yield `4xx` with an error object, and no job is created.",
+        "operationId": "create_simulation_v1_simulations_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_simulation_v1_simulations_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStateResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "An uploaded file or the whole request is too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The scenario is not a `.xosc` file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid configuration, file name or XML content, or the scenario is not among the files.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many jobs are running or waiting; see `Retry-After`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List all jobs",
+        "description": "Every job the service still holds, whatever its state, newest submission first. Finished jobs are deleted\n`jobTtlSeconds` after they finished (see `GET /v1/info`).",
+        "operationId": "list_jobs_v1_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobStateResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Jobs V1 Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}/status": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "State of a job",
+        "description": "`queued`, `running`, `finished` or `interrupted`. Once `finished`, the result is available at `resultUrl`.",
+        "operationId": "get_job_status_v1_jobs__job_id__status_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired job, or unknown artefact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Result of a job",
+        "operationId": "get_job_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired job, or unknown artefact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The job is still queued or running; poll its status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}/artifacts": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List the artefacts of a job",
+        "operationId": "list_artifacts_v1_jobs__job_id__artifacts_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Artifact"
+                  },
+                  "title": "Response List Artifacts V1 Jobs  Job Id  Artifacts Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired job, or unknown artefact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}/artifacts/{name}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Download an artefact",
+        "operationId": "download_artifact_v1_jobs__job_id__artifacts__name__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {},
+              "text/csv": {},
+              "text/plain": {}
+            }
+          },
+          "404": {
+            "description": "Unknown or expired job, or unknown artefact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/road-previews": {
+      "post": {
+        "tags": [
+          "road previews"
+        ],
+        "summary": "Draw a road network as an image",
+        "description": "Returns a top view of the whole road network as PNG, at once (no job).\n\n`renderer` chooses the picture. `odrviewer` (default) shows the network in esmini's 3D viewer, straight from\nabove: road surfaces, markings and road objects, in flat colours (the image has no textures), x to the right and\ny up. `plot` draws every lane border (reference lines red, driving lanes blue, other lanes grey) with axes in\nmetres and each road labelled with its id.",
+        "operationId": "create_road_preview_v1_road_previews_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_road_preview_v1_road_previews_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The road network as PNG.",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "413": {
+            "description": "The file or the whole request is too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The road is not an `.xodr` file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid configuration, file name or XML, or no drawable lanes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many previews are running or waiting; see `Retry-After`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "odrviewer could not render the road network; try `plot`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "This image cannot run odrviewer; use `plot`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Sampling or drawing took longer than the server allows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Artifact": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "sim.csv"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Size in bytes."
+          },
+          "contentType": {
+            "type": "string",
+            "title": "Contenttype",
+            "examples": [
+              "text/csv"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Relative download URL.",
+            "examples": [
+              "/v1/jobs/q7c1.../artifacts/sim.csv"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "size",
+          "contentType",
+          "url"
+        ],
+        "title": "Artifact"
+      },
+      "Body_create_road_preview_v1_road_previews_post": {
+        "properties": {
+          "road": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Road",
+            "description": "OpenDRIVE file (`.xodr`) of the road network."
+          },
+          "config": {
+            "type": "string",
+            "title": "Config",
+            "description": "Options as JSON text conforming to the `RoadPreviewConfig` schema (see Schemas below). Omit for defaults.",
+            "examples": [
+              "{\"renderer\": \"odrviewer\", \"width\": 1200, \"height\": 900}"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "road"
+        ],
+        "title": "Body_create_road_preview_v1_road_previews_post"
+      },
+      "Body_create_simulation_v1_simulations_post": {
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "title": "Files",
+            "description": "The scenario and every file it refers to: road networks (`.xodr`), catalogs (`.xosc`), SUMO files, 3D models (`.osgb`), textures and any other data. Any file type is accepted; XML files are checked. The image contains no esmini sample files or models to fall back on."
+          },
+          "scenario": {
+            "type": "string",
+            "title": "Scenario",
+            "description": "File name of the scenario to run; must be one of `files` and end in `.xosc`."
+          },
+          "config": {
+            "type": "string",
+            "title": "Config",
+            "description": "Configuration as JSON text conforming to the `SimulationConfig` schema (see Schemas below). Omit for defaults. With curl: `-F 'config={\"timestep\": 0.05}'` or `-F 'config=<config.json'`.",
+            "examples": [
+              "{\"timestep\": 0.05, \"outputs\": [\"dat\", \"csv\", \"log\"], \"limits\": {\"wallTimeoutSeconds\": 60}}"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "scenario"
+        ],
+        "title": "Body_create_simulation_v1_simulations_post"
+      },
+      "CameraMode": {
+        "type": "string",
+        "enum": [
+          "orbit",
+          "fixed",
+          "flex",
+          "flex-orbit",
+          "top",
+          "driver"
+        ],
+        "title": "CameraMode",
+        "description": "Camera modes of esmini's viewer (`--camera_mode`), except `custom`, which needs camera positions."
+      },
+      "Capabilities": {
+        "properties": {
+          "simulations": {
+            "type": "boolean",
+            "title": "Simulations",
+            "default": true
+          },
+          "rendering2d": {
+            "type": "boolean",
+            "title": "Rendering2D",
+            "description": "2D top-view snapshots (planned).",
+            "default": false
+          },
+          "rendering3d": {
+            "type": "boolean",
+            "title": "Rendering3D",
+            "description": "3D viewer snapshots (planned, optional).",
+            "default": false
+          },
+          "roadPreviews": {
+            "type": "boolean",
+            "title": "Roadpreviews",
+            "description": "`POST /v1/road-previews`: road network as PNG.",
+            "default": false
+          },
+          "videos": {
+            "type": "boolean",
+            "title": "Videos",
+            "description": "`video` in `config.outputs`: MP4 of a run in the 3D viewer.",
+            "default": false
+          },
+          "permutations": {
+            "type": "boolean",
+            "title": "Permutations",
+            "description": "Parameter-distribution runs (planned).",
+            "default": false
+          },
+          "parameterOverrides": {
+            "type": "boolean",
+            "title": "Parameteroverrides",
+            "description": "ParameterDeclaration overrides (planned).",
+            "default": false
+          },
+          "osi": {
+            "type": "boolean",
+            "title": "Osi",
+            "description": "OSI trace output (not planned for v1).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "Capabilities",
+        "description": "Which features this image offers. Clients should check these instead of assuming them."
+      },
+      "ErrorDetail": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Loc",
+            "description": "Path to the offending field, e.g. `[\"config\", \"timestep\"]`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "message",
+          "type"
+        ],
+        "title": "ErrorDetail"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable, machine-readable error code, e.g. `validation_error`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable explanation."
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": "array",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorResponse"
+      },
+      "EsminiInfo": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "examples": [
+              "3.8.1"
+            ]
+          },
+          "gitRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gitrevision",
+            "examples": [
+              "v3.8.1-0-19d26b68"
+            ]
+          },
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build",
+            "examples": [
+              "6383"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "EsminiInfo"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "examples": [
+              "ok"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse"
+      },
+      "InfoResponse": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "default": "esmini-rest"
+          },
+          "serviceVersion": {
+            "type": "string",
+            "title": "Serviceversion"
+          },
+          "imageVersion": {
+            "type": "string",
+            "title": "Imageversion"
+          },
+          "apiVersion": {
+            "type": "string",
+            "title": "Apiversion",
+            "default": "v1"
+          },
+          "esmini": {
+            "$ref": "#/components/schemas/EsminiInfo"
+          },
+          "arch": {
+            "type": "string",
+            "title": "Arch",
+            "description": "CPU architecture of the container, e.g. `amd64`.",
+            "examples": [
+              "amd64"
+            ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitsInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serviceVersion",
+          "imageVersion",
+          "esmini",
+          "arch",
+          "capabilities",
+          "limits"
+        ],
+        "title": "InfoResponse"
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "finished",
+          "interrupted"
+        ],
+        "title": "JobState",
+        "description": "Where a job is in its life cycle: `queued -> running -> finished`, or `interrupted`."
+      },
+      "JobStateResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid",
+            "examples": [
+              "q7c1hX0yD2mVb5fT8aLkQw"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState",
+            "description": "`queued`: waiting for a free esmini slot. `running`: esmini is running. `finished`: the result is available at `resultUrl`, whatever the outcome (see its `status`). `interrupted`: the service stopped before the job finished (e.g. the container was restarted); there is no result."
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submittedat",
+            "description": "When the job was submitted (its files were stored)."
+          },
+          "statusUrl": {
+            "type": "string",
+            "title": "Statusurl",
+            "description": "Relative URL of this status.",
+            "examples": [
+              "/v1/jobs/q7c1.../status"
+            ]
+          },
+          "resultUrl": {
+            "type": "string",
+            "title": "Resulturl",
+            "description": "Relative URL of the result; it answers `409` until the job is finished.",
+            "examples": [
+              "/v1/jobs/q7c1..."
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "state",
+          "submittedAt",
+          "statusUrl",
+          "resultUrl"
+        ],
+        "title": "JobStateResponse"
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "succeeded",
+          "failed",
+          "timed_out"
+        ],
+        "title": "JobStatus",
+        "description": "Outcome of a finished job."
+      },
+      "Limits": {
+        "properties": {
+          "wallTimeoutSeconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Walltimeoutseconds",
+            "description": "Wall-clock limit for the esmini run in seconds. esmini has no simulated-time limit, so a scenario without a reachable stop trigger runs until this timeout. Defaults to the server's `defaultTimeoutSeconds`; must not exceed `maxTimeoutSeconds` (see `GET /v1/info`).",
+            "examples": [
+              60
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Limits"
+      },
+      "LimitsInfo": {
+        "properties": {
+          "maxUploadMb": {
+            "type": "number",
+            "title": "Maxuploadmb"
+          },
+          "maxTotalUploadMb": {
+            "type": "number",
+            "title": "Maxtotaluploadmb"
+          },
+          "defaultTimeoutSeconds": {
+            "type": "number",
+            "title": "Defaulttimeoutseconds"
+          },
+          "maxTimeoutSeconds": {
+            "type": "number",
+            "title": "Maxtimeoutseconds"
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "title": "Maxconcurrentjobs"
+          },
+          "maxQueuedJobs": {
+            "type": "integer",
+            "title": "Maxqueuedjobs"
+          },
+          "jobTtlSeconds": {
+            "type": "number",
+            "title": "Jobttlseconds",
+            "description": "Jobs and their artefacts are deleted after this many seconds."
+          },
+          "maxVideoSeconds": {
+            "type": "number",
+            "title": "Maxvideoseconds",
+            "description": "A video covers at most this much simulation time."
+          },
+          "videoTimeoutSeconds": {
+            "type": "number",
+            "title": "Videotimeoutseconds",
+            "description": "Wall-clock limit for rendering one video."
+          },
+          "previewTimeoutSeconds": {
+            "type": "number",
+            "title": "Previewtimeoutseconds",
+            "description": "Wall-clock limit for each step of a road preview."
+          }
+        },
+        "type": "object",
+        "required": [
+          "maxUploadMb",
+          "maxTotalUploadMb",
+          "defaultTimeoutSeconds",
+          "maxTimeoutSeconds",
+          "maxConcurrentJobs",
+          "maxQueuedJobs",
+          "jobTtlSeconds",
+          "maxVideoSeconds",
+          "videoTimeoutSeconds",
+          "previewTimeoutSeconds"
+        ],
+        "title": "LimitsInfo"
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ],
+        "title": "LogLevel"
+      },
+      "OutputKind": {
+        "type": "string",
+        "enum": [
+          "dat",
+          "csv",
+          "log",
+          "video"
+        ],
+        "title": "OutputKind"
+      },
+      "SimulationConfig": {
+        "properties": {
+          "timestep": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.001,
+            "title": "Timestep",
+            "description": "Fixed simulation time step in seconds (esmini `--fixed_timestep`).",
+            "default": 0.05,
+            "examples": [
+              0.05
+            ]
+          },
+          "collisionDetection": {
+            "type": "boolean",
+            "title": "Collisiondetection",
+            "description": "Global collision detection (esmini `--collision`): collisions between entities are detected and logged. On by default; set `false` to save some time in scenarios with many entities.",
+            "default": true
+          },
+          "disableControllers": {
+            "type": "boolean",
+            "title": "Disablecontrollers",
+            "description": "Disable all controllers defined in the scenario (esmini `--disable_controllers`).",
+            "default": false
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Seed of esmini's random number generator (esmini `--seed`). Omit for esmini's default.",
+            "examples": [
+              42
+            ]
+          },
+          "logLevel": {
+            "$ref": "#/components/schemas/LogLevel",
+            "description": "esmini log level (esmini `--log_level`).",
+            "default": "info"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/OutputKind"
+            },
+            "type": "array",
+            "title": "Outputs",
+            "description": "Artefacts to keep: `dat` (esmini recording `sim.dat`), `csv` (entity states per time step, `sim.csv`, produced by `dat2csv --extended`), `log` (esmini console log `log.txt`), `video` (`video.mp4`, the run rendered in esmini's 3D viewer; see `video`). Videos take much longer than the simulation itself and cover at most `maxVideoSeconds` of simulation time (see `GET /v1/info`).",
+            "examples": [
+              [
+                "dat",
+                "csv",
+                "log",
+                "video"
+              ]
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoOptions",
+            "description": "Options of the video; used only if `outputs` contains `video`."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SimulationConfig",
+        "description": "Options of a simulation run. Every field maps to a fixed esmini argument; there is no pass-through."
+      },
+      "SimulationResult": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "`succeeded`: esmini exited with code 0. `failed`: non-zero exit code or termination by a signal; see `warnings` and `log.txt`. `timed_out`: the wall-clock limit was reached and the run was killed."
+          },
+          "scenario": {
+            "type": "string",
+            "title": "Scenario",
+            "description": "File name of the scenario that was run."
+          },
+          "esminiVersion": {
+            "type": "string",
+            "title": "Esminiversion",
+            "examples": [
+              "3.8.1"
+            ]
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exitcode",
+            "description": "esmini exit code; `null` if the process was killed on timeout."
+          },
+          "wallSeconds": {
+            "type": "number",
+            "title": "Wallseconds",
+            "description": "Wall-clock duration of the esmini run."
+          },
+          "simulatedSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulatedseconds",
+            "description": "Simulation time of the last recorded step, taken from the CSV; `null` if unavailable."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "esmini log lines of level `warn` or `error` (deduplicated, truncated) and service notes."
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "config": {
+            "$ref": "#/components/schemas/SimulationConfig",
+            "description": "The effective configuration, including defaults."
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "scenario",
+          "esminiVersion",
+          "exitCode",
+          "wallSeconds",
+          "simulatedSeconds",
+          "createdAt",
+          "warnings",
+          "artifacts",
+          "config"
+        ],
+        "title": "SimulationResult"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VideoOptions": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "multipleOf": 2.0,
+            "maximum": 1920.0,
+            "minimum": 160.0,
+            "title": "Width",
+            "description": "Frame width in pixels.",
+            "default": 1280
+          },
+          "height": {
+            "type": "integer",
+            "multipleOf": 2.0,
+            "maximum": 1080.0,
+            "minimum": 90.0,
+            "title": "Height",
+            "description": "Frame height in pixels.",
+            "default": 720
+          },
+          "framesPerSecond": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Framespersecond",
+            "description": "Frame rate of the video, which plays in real time. esmini renders one image per simulation step (`timestep`); images are dropped or repeated to reach this rate. Rendering time therefore grows with the number of steps: use a coarser `timestep` for long scenarios.",
+            "default": 20,
+            "examples": [
+              20
+            ]
+          },
+          "cameraMode": {
+            "$ref": "#/components/schemas/CameraMode",
+            "description": "Initial camera of the viewer (esmini `--camera_mode`).",
+            "default": "orbit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VideoOptions",
+        "description": "Options of the video (`outputs` contains `video`). The recording of the run is replayed in esmini's 3D viewer\noff-screen and encoded as H.264 MP4. Vehicles without 3D models are drawn as boxes."
+      },
+      "Renderer": {
+        "enum": [
+          "odrviewer",
+          "plot"
+        ],
+        "title": "Renderer",
+        "type": "string"
+      },
+      "RoadPreviewConfig": {
+        "additionalProperties": false,
+        "description": "Options of the road picture, a top view of the whole road network.",
+        "properties": {
+          "renderer": {
+            "$ref": "#/components/schemas/Renderer",
+            "default": "odrviewer",
+            "description": "`odrviewer`: esmini's 3D viewer seen from above, with road surfaces, markings and objects (flat colours, no textures). `plot`: a schematic 2D drawing of every lane border with axes in metres and road ids, drawn with matplotlib.",
+            "examples": [
+              "odrviewer"
+            ]
+          },
+          "width": {
+            "default": 1200,
+            "description": "Image width in pixels.",
+            "examples": [
+              1200
+            ],
+            "maximum": 4000,
+            "minimum": 200,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "default": 900,
+            "description": "Image height in pixels.",
+            "examples": [
+              900
+            ],
+            "maximum": 4000,
+            "minimum": 200,
+            "title": "Height",
+            "type": "integer"
+          },
+          "roadIds": {
+            "default": true,
+            "description": "Label each road with its OpenDRIVE id (`plot` only).",
+            "title": "Roadids",
+            "type": "boolean"
+          },
+          "samplingStep": {
+            "default": 1.0,
+            "description": "Distance in metres between sampled points along each lane (`odrplot` sampling step). `plot` draws these points; `odrviewer` uses them only to frame the picture.",
+            "examples": [
+              1.0
+            ],
+            "maximum": 10.0,
+            "minimum": 0.1,
+            "title": "Samplingstep",
+            "type": "number"
+          }
+        },
+        "title": "RoadPreviewConfig",
+        "type": "object"
+      }
+    }
+  }
+}

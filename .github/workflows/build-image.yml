@@ -1,0 +1,118 @@
+name: build-image
+
+# Runs the test workflow, then builds the linux/amd64 image, smoke-tests it and publishes it to
+# ghcr.io/<owner>/esmini-rest (PLAN.md §7.3).
+#   manual run on main -> :main, :sha-<short sha>
+#   tag v1.2.3        -> :1.2.3, :1.2, :1, :latest, :esmini-<esmini version>, :sha-<short sha>
+#   tag v1.2.3-rc.1   -> :1.2.3-rc.1, :sha-<short sha>
+# Credentials: the workflow's GITHUB_TOKEN only.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    runs-on: ubuntu-24.04
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TEST_TAG: esmini-rest:ci
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Versions
+        id: version
+        run: |
+          # The esmini version is pinned in the Dockerfile only; read it from there.
+          esmini=$(sed -n 's/^ARG ESMINI_VERSION=//p' docker/Dockerfile | sort -u)
+          if ! [[ "$esmini" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::expected one ESMINI_VERSION in docker/Dockerfile, found '$esmini'"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then image="${GITHUB_REF_NAME#v}"; else image="$GITHUB_REF_NAME-${GITHUB_SHA::7}"; fi
+          echo "esmini=$esmini" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/esmini-rest
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=raw,value=esmini-${{ steps.version.outputs.esmini }},enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=sha
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Test before push: build into the local image store, run the smoke test, then push the same build from the
+      # builder cache. Both builds must get the same inputs.
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          build-args: IMAGE_VERSION=${{ steps.version.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: false
+          load: true
+          tags: ${{ env.TEST_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        env:
+          ESMINI_IMAGE: ${{ env.TEST_TAG }}
+          IMAGE_VERSION: ${{ steps.version.outputs.image }}
+        run: |
+          docker compose up -d --no-build --wait
+          scripts/smoke.sh http://127.0.0.1:8080
+          curl -fsS http://127.0.0.1:8080/v1/info | jq -e --arg v "$IMAGE_VERSION" '.imageVersion == $v'
+
+      - name: Container log
+        if: failure()
+        env:
+          ESMINI_IMAGE: ${{ env.TEST_TAG }}
+        run: docker compose logs
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # provenance: false keeps a single-platform manifest instead of an index with an attestation entry. Docker on
+      # Apple silicon then pulls the amd64 image with a warning when --platform is forgotten, instead of failing with
+      # "no matching manifest for linux/arm64/v8" (docs/spikes/03-ghcr-publishing.md).
+      - name: Push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          build-args: IMAGE_VERSION=${{ steps.version.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

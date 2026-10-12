@@ -1,0 +1,49 @@
+[project]
+name = "esmini-rest"
+version = "0.1.0"
+description = "REST service that runs esmini OpenSCENARIO simulations inside a Docker container"
+readme = "README.md"
+license = "MIT"
+# The container uses the Python of ubuntu:22.04 (3.10); keep local development on the same version.
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "fastapi>=0.141,<0.142",
+    "uvicorn>=0.53,<0.54",
+    "python-multipart>=0.0.32",
+    "defusedxml>=0.7.1",
+    "matplotlib>=3.10,<3.11",
+    "pillow>=12,<13",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "httpx>=0.28",
+    "ruff>=0.13",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: needs a running container (see `make test-integration`)",
+]
+# Integration tests are opt-in; `make test-integration` selects them explicitly.
+addopts = "-ra -m 'not integration'"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S"]
+ignore = [
+    "S603", # subprocess without shell is exactly what the runner does, with a whitelisted argv
+    "B008", # FastAPI's File()/Form() defaults in signatures are idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S108", "S310", "S603", "S607"]
