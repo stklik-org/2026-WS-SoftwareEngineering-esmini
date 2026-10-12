@@ -1,0 +1,1 @@
+Usage: ordplot openDriveFile.xodr [Output file, default=output.csv] [Sampling_step, default=1.0]

@@ -1,0 +1,22 @@
+
+Usage: dat2csv [options]
+Options: 
+  --path </opt/esmini/bin>
+      path
+  --csv <name>
+      Optional name of the output file (default is Dat-file-name with .csv extension)
+  --extended 
+      Make csv with extended data fields
+  [--file] <filename>
+      Dat-file to convert to csv
+  --help 
+      Show this help message (-h works as well)
+  --file_refs 
+      include odr model, and git file references
+  --precision [number of decimals]  (default if option or value omitted: 3)
+      Output floating point number precision
+  --print_csv 
+      Print the csv to stdout instead of saving it
+  --version 
+      Show version and quit
+

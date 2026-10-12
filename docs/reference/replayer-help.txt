@@ -1,0 +1,100 @@
+
+Usage: replayer [options]
+Options: 
+  [--file] <filename>
+      Simulation recording data file (.dat)
+  --aa_mode [mode]  (default if value omitted: 4)
+      Anti-alias mode=number of multisamples (subsamples, 0=off)
+  --axis_indicator <mode>
+      0:off 1:on 2:xray, cycle key 'x'
+  --camera_mode [mode]  (default if option or value omitted: orbit)
+      Initial camera mode ("orbit", "fixed", "flex", "flex-orbit", "top", "driver", "custom"). Toggle key 'k'
+  --capture_screen 
+      Continuous screen capture. Warning: Many jpeg files will be created
+  --collision [mode]  (default if value omitted: pause)
+      Detect collisions and optionally pauses the replay <pause/continue> (pause is default)
+  --config_file_path [path]...  (default if option or value omitted: config.yml)
+      Configuration file path/filename, e.g. "../my_config.txt"
+  --custom_camera <position>...
+      Additional custom camera position <x,y,z>[,h,p]
+  --custom_fixed_camera <position and optional orientation>...
+      Additional custom fixed camera position <x,y,z>[,h,p]
+  --custom_fixed_top_camera <position and rotation>...
+      Additional custom top camera <x,y,z,rot>
+  --dir <path>
+      Directory containing replays to overlay, pair with "file" argument, where "file" is .dat filename match substring
+  --disable_shadows 
+      Disable shadows
+  --fixed_timestep <s>
+      Use fixed timestep for the replay
+  --ground_plane [mode]  (default if option or value omitted: auto)
+      Add a large flat ground surface. Modes: on, off, auto
+  --generate_without_textures 
+      Do not apply textures on any generated road model (set colors instead as for missing textures)
+  --gui [mode]  (default if option or value omitted: on)
+      Show gui overlay on graphics window. Modes: on, off
+  --headless 
+      Run without viewer window
+  --help 
+      Show this help message (-h works as well)
+  --hide_trajectories 
+      Hide trajectories from start (toggle with key 'n')
+  --hide_obj_outline 
+      Hide any object 2D shape outlines (toggle key ';')
+  --info_text [mode]  (default if option or value omitted: 1)
+      Show on-screen info text. Modes: 0=None 1=current 2=per_object 3=both. Toggle key 'i'
+  --light_mode [mode]  (default if option or value omitted: auto)
+      Show lights for light state actions. Modes: on, off, auto. Toggle key 'L'
+  --logfile_path [path]  (default if option or value omitted: replayer_log.txt)
+      Logfile path/filename, e.g. "../my_log.txt"
+  --log_level [mode]  (default if option or value omitted: info)
+      Log level debug, info, warn, error
+  --no_ghost 
+      Remove ghost entities
+  --no_ghost_model 
+      Remove only ghost model, show trajectory (toggle with key 'g')
+  --osg_screenshot_event_handler 
+      Revert to OSG default jpg images ('c'/'C' keys handler)
+  --path <path>...
+      Search path prefix for assets, e.g. OpenDRIVE files.
+  --quit_at_end 
+      Quit application when reaching end of scenario
+  --remove_object <id>
+      Remove object(s). Multiple ids separated by comma, e.g. 2,3,4.
+  --repeat 
+      loop scenario
+  --res_path <path>
+      Path to resources root folder - relative or absolut
+  --road_features [mode]  (default if value omitted: on)
+      Show OpenDRIVE road features. Modes: on, off. Toggle key 'o'
+  --save_merged <filename>
+      Save merged data into one dat file, instead of viewing
+  --start_time <ms>
+      Start playing at timestamp
+  --stop_time <ms>
+      Stop playing at timestamp (set equal to time_start for single frame)
+  --text_scale [size factor]  (default if option or value omitted: 1.0)
+      Scale screen overlay text
+  --time_scale <factor>
+      Playback speed scale factor (1.0 == normal)
+  --tunnel_transparency [transparency]  (default if value omitted: 0.0)
+      Set level of transparency for generated tunnels [0:1]
+  --use_signs_in_external_model 
+      When external scenegraph 3D model is loaded, skip creating signs from OpenDRIVE
+  --version 
+      Show version and quit
+  --view_ghost_restart 
+      Ghost restarts will be shown with separate ghosts
+  --view_mode <view_mode>
+      Entity visualization: "model"(default)/"boundingbox"/"both"/"filled_boundingbox" toggle key ','
+  --wireframe 
+      Global wireframe mode, toggle key 'w'
+
+Additional OSG graphics options:
+  --clear-color <color>                      Set the background color of the viewer in the form "r,g,b[,a]"
+  --screen <num>                             Set the screen to use when multiple screens are present
+  --window <x y w h>                         Set the position x, y and size w, h of the viewer window. -1 -1 -1 -1 for fullscreen.
+  --borderless-window <x y w h>              Set the position x, y and size w, h of a borderless viewer window. -1 -1 -1 -1 for fullscreen.
+  --SingleThreaded                           Run application and all graphics tasks in one single thread.
+  --lodScale <LOD scalefactor>               Adjust Level Of Detail 1=default >1 decrease fidelity <1 increase fidelity
+

@@ -5,3 +5,6 @@ __pycache__/
 .ruff_cache/
 smoke-output/
 .DS_Store
+# Local assistant files
+.claude/
+CLAUDE.md
